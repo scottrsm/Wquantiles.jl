@@ -184,7 +184,7 @@ Letting `qs` be the sorted quantiles of `q`.
 The entry `(i,j)` is the ``i^{\\rm th}`` quantile (in `qs`) from the ``j^{\\rm th}`` column of `X`.
 
 """
-function wquantile(X::AbstractMatrix{T} , 
+function Wquantile(X::AbstractMatrix{T} , 
                    w::AbstractVector{S} , 
                    q::AbstractVector{V} ;
                    chk::Bool = true     , 
