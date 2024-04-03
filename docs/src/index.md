@@ -14,16 +14,16 @@ There is an associated Jupyter notebook at
 ## Functions
 
 ```@docs
-wquantile(::Vector{T}, ::Vector{S}, ::Vector{V}; ::Bool = true, ::Bool = true, ::Bool = true) where {T, S <: Real, V <: Real}
+wquantile(::AbstractVector{T}, ::AbstractVector{S}, ::AbstractVector{V}; ::Bool = true, ::Bool = true, ::Bool = true) where {T, S <: Real, V <: Real}
 ```
 
 
 ```@docs
-Wquantile(::Matrix{T}, ::Vector{S}, ::Vector{V}; ::Bool = true, ::Bool = true, ::Bool = true) where {T, S <: Real, V <: Real}
+Wquantile(::AbstractMatrix{T}, ::AbstractVector{S}, ::AbstractVector{V}; ::Bool = true, ::Bool = true, ::Bool = true) where {T, S <: Real, V <: Real}
 ```
 
 ```@docs
-wquantile(::Matrix{T}, ::Matrix{S}, ::Vector{V}; ::Bool = true, ::Bool = true, ::Bool = true) where {T, S <: Real, V <: Real}
+wquantile(::AbstractMatrix{T}, ::AbstractMatrix{S}, ::AbstractVector{V}; ::Bool = true, ::Bool = true, ::Bool = true) where {T, S <: Real, V <: Real}
 ```
 
 
