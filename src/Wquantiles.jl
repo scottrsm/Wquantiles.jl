@@ -311,7 +311,7 @@ function wquantile(X::AbstractMatrix{T},
     #                        to pick the default index value for each column to
     #                        be the largest index in the column, so if the threshold
     #                        is not reached we do the right thing.
-    Qxsi = Array{Int64}(undef, l, m)
+    Qxsi = Array{Int}(undef, l, m)
     for i in 1:m
       @inbounds Qxsi[:, i] .= i * n
     end
