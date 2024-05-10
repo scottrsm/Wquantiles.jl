@@ -1,6 +1,6 @@
 module Wquantiles
 
-export wquantile
+export wquantile, Wquantile
 
 import Folds
 

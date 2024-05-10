@@ -1,6 +1,6 @@
-using Test
 using Wquantiles
 import Random
+using Test
 
 
 @testset "Wquantiles (Fidelity)                             " begin
