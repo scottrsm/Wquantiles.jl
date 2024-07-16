@@ -47,7 +47,7 @@ Finds the `q` weighted quantile values from the vector `x`.
 
    **NOTE:** If `sort_q` is `false`, it *ASSUMED* that `q` is already sorted.
 
-## Input Contract
+# Input Contract
 - The type of `x` implements sortable.
 -    `|x| == |w|`     -- Length of `x` matches length of weights.
 - `∀i,  w[i] >= 0`    -- The weights are non-negative.
@@ -106,14 +106,15 @@ function wquantile(x::AbstractVector{T} ,
     # Apply permutation to `x`.
     @inbounds xs = x[idx]
 
-    # Create an index vector to get the list of quantiles of `x`.
-    # Default the indices to the largest element of `x`.
-    # Why is this important: If one chooses 1.0 as a quantile, it could easily be
-    #                        the case, due to numeric inaccuracy, that we do not
-    #                        reach the 1.0 threshold. For this reason we want
-    #                        to pick the default index value to
-    #                        be the largest index in `x`, so if the threshold
-    #                        is not reached we do the right thing.
+    #= Create an index vector to get the list of quantiles of `x`.
+       Default the indices to the largest element of `x`.
+       Why is this important: If one chooses 1.0 as a quantile, it could easily be
+                              the case, due to numeric inaccuracy, that we do not
+                              reach the 1.0 threshold. For this reason we want
+                              to pick the default index value to
+                              be the largest index in `x`, so if the threshold
+                              is not reached we do the right thing.
+	=#
     qxsi = fill(n, m)
 
     # Using the fact that the quantile values are in sorted order,
@@ -170,7 +171,7 @@ Finds the `q` weighted quantile values from the columns of the matrix `X`.
 
    **NOTE:** If `sort_q` is `false`, it is *ASSUMED* that `q` is already sorted.
 
-## Input Contract
+# Input Contract
 -  The type of `X` implements sortable.
 - `∀i, |X[:, i]|  == |w|` -- Length of each column of `X` matches length of weights.
 - `∀i,      w[i]  >= 0`   -- Weights are non-negative.
@@ -204,17 +205,19 @@ function Wquantile(X::AbstractMatrix{T} ,
         q = sort(q)
     end
 
-    # Create a closure that will be threaded -- computing the weighted quantiles of the columns of `X`.
-    # If `chk` is true, only do the input check for the first column
-    # as checking the rest of the columns is redundant.
+    #= Create a closure that will be threaded -- computing the weighted quantiles of the columns of `X`.
+       If `chk` is true, only do the input check for the first column
+       as checking the rest of the columns is redundant.
+	=#
     wquant_vec_func = p -> wquantile(p[1], w, q, 
                                      chk=p[2]==1 ? chk : false, 
                                      norm_wgt=false, sort_q=false)
 
-    # Computation: (from right to left)
-    # - Zip up the columns of `X` along with the column number.
-    # - Use Folds.map to apply multiple threads to compute the weighted quantiles on each column of `X`.
-    # - Place them back as an array using reduce hcat.
+    #= Computation: (from right to left)
+       - Zip up the columns of `X` along with the column number.
+       - Use Folds.map to apply multiple threads to compute the weighted quantiles on each column of `X`.
+       - Place them back as an array using reduce hcat.
+    =#
     return(reduce(hcat, Folds.map(wquant_vec_func, 
                                   zip([X[:, i] for i in 1:m], 1:m))))
 
@@ -238,7 +241,7 @@ Finds the `q` weighted quantile values from the columns of the matrix `X`.
 # Keyword Arguments
 - `chk=true::Bool`     : If `true`, check the input contract described below.
 
-## Input Contract
+# Input Contract
 -  The type of `X` is sortable.
 -  size(X) == size(W)
 - `∀i∀j, W[i, j] >= 0`   -- Weights are non-negative in each column.
@@ -255,9 +258,10 @@ function wquantile(X::AbstractMatrix{T},
                    W::AbstractMatrix{S}, 
                    q::AbstractVector{V}; 
                    chk::Bool = true     ) :: AbstractMatrix{T} where {T, S <: Real, V <: Real}
-    # ----------------------------------------------------------------
-    #--- Destructure inputs and potentially check input contract. ----
-    # ----------------------------------------------------------------
+    #= ----------------------------------------------------------------
+       --- Destructure inputs and potentially check input contract. ---
+       ----------------------------------------------------------------
+	=#
     
     # We report back the quantiles of `X` in sorted `q` order, so we sort `q`.
     qs     = sort(q)
@@ -285,9 +289,10 @@ function wquantile(X::AbstractMatrix{T},
         !all(zeroq .<= q          .<= oneq          )  && throw(DomainError(0, "`q`: Some quantiles are NOT in the interval, [0,1].")) 
     end
 
-    # ----------------------------------------------------------------
-    #--- Sort X, W based on X and compute quantiles.
-    # ----------------------------------------------------------------
+    #= ----------------------------------------------------------------
+       --- Sort X, W based on X and compute quantiles.
+       ----------------------------------------------------------------
+	=#
     
     # Get the permutation of indices that sort the columns of `X`. This will be used to create
     # a matrix of permutations of `wc` that align with this sorting.
@@ -303,14 +308,15 @@ function wquantile(X::AbstractMatrix{T},
     # Apply permutation to `X` -- sorting each column of `X`.
     @inbounds Xs = X[Idx]
 
-    # Create an index matrix to get the list of quantiles of `X`.
-    # Default the indices to the index of the largest element of X for each column.
-    # Why is this important: If one chooses 1.0 as a quantile, it could easily be
-    #                        the case, due to numeric inaccuracy, that we do not
-    #                        reach the 1.0 threshold. For this reason we want
-    #                        to pick the default index value for each column to
-    #                        be the largest index in the column, so if the threshold
-    #                        is not reached we do the right thing.
+    #= Create an index matrix to get the list of quantiles of `X`.
+       Default the indices to the index of the largest element of X for each column.
+       Why is this important: If one chooses 1.0 as a quantile, it could easily be
+                              the case, due to numeric inaccuracy, that we do not
+                              reach the 1.0 threshold. For this reason we want
+                              to pick the default index value for each column to
+                              be the largest index in the column, so if the threshold
+                              is not reached we do the right thing.
+	=#
     Qxsi = Array{Int}(undef, l, m)
     for i in 1:m
       @inbounds Qxsi[:, i] .= i * n
