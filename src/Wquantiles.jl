@@ -176,7 +176,7 @@ Finds the `q` weighted quantile values from the columns of the matrix `X`.
 - `∀i, |X[:, i]|  == |w|` -- Length of each column of `X` matches length of weights.
 - `∀i,      w[i]  >= 0`   -- Weights are non-negative.
 - `Σ w[i]  >  0`          -- The sum of the weights is positive.
-- `∀i,      q[i]  <= 1`   -- The quantiles values are in ``[0,1]``.
+- `∀i,      q[i]  <= 1`   -- The quantile values are in ``[0,1]``.
 - `∀i,      q[i]  >= 0`
 
 # Return
@@ -246,7 +246,7 @@ Finds the `q` weighted quantile values from the columns of the matrix `X`.
 -  size(X) == size(W)
 - `∀i∀j, W[i, j] >= 0`   -- Weights are non-negative in each column.
 - `∀i,Σ_j w[i,j] >  0`   -- The column sum of the weights is positive.
-- `∀i, 0 <= q[i] <= 1`   -- The quantiles values are in ``[0,1]``.
+- `∀i, 0 <= q[i] <= 1`   -- The quantile values are in ``[0,1]``.
 
 # Return
 The `(l,m)` matrix of weighted quantile values from `X`.
