@@ -298,9 +298,10 @@ function wquantile(X::AbstractMatrix{T},
     # a matrix of permutations of `wc` that align with this sorting.
     Idx = sortperm(X; dims=1)
 
-    # Convert the indices to column specific indices that `WC` understands
-    # and sort the columns of `WC` as columns of `X` are sorted.
-    @inbounds Wsc = WC[(Idx .- 1) .% n .+ 1]
+    # Convert the linear indices to row indices, then add back column offsets
+    # to get correct linear indices into `WC` for each column.
+    row_indices = (Idx .- 1) .% n .+ 1
+    @inbounds Wsc = WC[row_indices .+ (0:m-1)' .* n]
 
     # Normalize sorted weights by column.
     Wsc ./= sum(Wsc, dims=1)
