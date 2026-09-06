@@ -12,16 +12,29 @@ end
 # How to print NotSortable Exception.
 Base.show(io::IO, e::NotSortable) = print(io, "Type, \"$(e.var)\", is NOT sortable.")
 
-# Make a sortable Trait.
-function isSortable(::Type{T}) :: Bool where {T <: Number}
-    x = one(T)
-    try
-       isless(x, x)
-    catch _ 
-        return(false) 
-    end
-    return(true)
+# Make a sortable Trait: does the type have an `isless` method?
+# (For a non-concrete element type we cannot tell up front; let `sortperm` decide.)
+function isSortable(::Type{T}) where {T}
+    return !isconcretetype(T) || hasmethod(isless, Tuple{T, T})
 end
+
+# The element type used for (normalized) weights: the promotion of the weight and
+# quantile types, closed under division (so integer weights become floating point,
+# while rational weights stay rational).
+function _weight_type(::Type{S}, ::Type{V}) where {S, V}
+    P = promote_type(S, V)
+    return typeof(one(P) / one(P))
+end
+
+#= Definition of the weighted quantile used throughout this module.
+
+   Let `xs` be `x` sorted (ascending) with the (normalized) weights `ws` permuted alongside,
+   and let `F(i) = ws[1] + ... + ws[i]` be the cumulative weight up to and including `xs[i]`.
+   The `q` quantile is `xs[i*]` with `i* = min{ i : F(i) >= q }`; if rounding keeps every
+   `F(i)` below `q` (only possible when `q` is 1), the largest element is returned.
+   This is the inverse of the weighted empirical distribution function; with equal weights
+   it agrees with the "inverted CDF" (type 1) quantile of `Statistics`/`StatsBase`.
+=#
 
 
 """
@@ -60,42 +73,48 @@ The vector(l) of weighted quantile values from `x`.
 Letting `qs` be the sorted quantiles of `q`.
 The entry `i` is the ``i^{\\rm th}`` quantile (in `qs`) of `x`.
 
+# Definition
+Let `xs` be `x` sorted (ascending) with the normalized weights `ws` permuted alongside,
+and `F(i) = ws[1] + ... + ws[i]` the cumulative weight up to and including `xs[i]`.
+The quantile for `q` is `xs[i]` for the smallest `i` with `F(i) >= q` (the inverse of the
+weighted empirical distribution function). With equal weights this is the "inverted CDF"
+quantile: for `x = [1, 2, 3, 4]`, `q = 0.5` gives `2` and `q = 0.51` gives `3`.
 """
 function wquantile(x::AbstractVector{T} , 
                    w::AbstractVector{S} , 
                    q::AbstractVector{V} ;
                    chk::Bool = true     , 
                    norm_wgt::Bool = true, 
-                   sort_q::Bool = true   ) :: AbstractVector{T} where {T, S <: Real, V <: Real}
+                   sort_q::Bool = true   ) where {T, S <: Real, V <: Real}
     # We report back the quantiles of `x` in sorted `q` order, so we need to sort `q`.
     # **NOTE:** If we don't explicitly sort `q`, it means that you are *ASSUMING* `q` is sorted.
-    if sort_q
-      q = sort(q)
-    end
-    m  = length(q)
+    qs = sort_q ? sort(q) : q
+    m  = length(qs)
     n  = length(x)
 
     # Get 0 and 1 for `q` types.
-    zeroq = zero(eltype(q[1]))
-    oneq  = one(eltype(q[1]))
+    zeroq = zero(V)
+    oneq  = one(V)
 
     # Check input contract...
     if chk
         !isSortable(T)  && throw(NotSortable(string(T)))
-        n != length(w)  && throw(DomainError(0, "`x` and `w` do not have the same length."))
+        n != length(w)  && throw(DimensionMismatch("`x` and `w` do not have the same length: $n != $(length(w))."))
     end
 
     # Get the permutation of indices that sort `x`.
     idx = sortperm(x)
 
-    # Convert sorted weights.
-    @inbounds wsc = convert(AbstractVector{promote_type(eltype(w[1]), eltype(q[1]))}, w[idx])
+    # Sorted weights, converted to a type closed under division (a fresh array: `w` is never modified).
+    W   = _weight_type(S, V)
+    wsc = W[w[i] for i in idx]
+    zerow = zero(W)
 
     # Check input contract...
     if chk
-        !all(wsc .>= zeroq)          && throw(DomainError(0, "`wsc`: Some weights are negative."))
-        !(sum(wsc) >  zeroq)         && throw(DomainError(0, "`wsc`: The sum of the weights is NOT > 0."))
-        !all(zeroq .<= q .<= oneq)   && throw(DomainError(0, "`q`  : Some quantiles are NOT in the interval, [0,1].")) 
+        !all(>=(zerow), wsc)         && throw(DomainError(0, "`w`: Some weights are negative."))
+        !(sum(wsc) >  zerow)         && throw(DomainError(0, "`w`: The sum of the weights is NOT > 0."))
+        !all(v -> zeroq <= v <= oneq, qs) && throw(DomainError(0, "`q`  : Some quantiles are NOT in the interval, [0,1].")) 
     end
 
     # Normalize sorted weights?
@@ -104,7 +123,7 @@ function wquantile(x::AbstractVector{T} ,
     end
 
     # Apply permutation to `x`.
-    @inbounds xs = x[idx]
+    xs = x[idx]
 
     #= Create an index vector to get the list of quantiles of `x`.
        Default the indices to the largest element of `x`.
@@ -119,32 +138,32 @@ function wquantile(x::AbstractVector{T} ,
 
     # Using the fact that the quantile values are in sorted order,
     # find the index for each associated value in `xs`, placing them in `qxsi`.
+    # `s` is the cumulative weight up to and including `xs[i]`.
     j = 1
-    s = zeroq
+    s = zerow
+    m == 0 && @goto done
     @inbounds for i in 1:n
-        # If we exceed the current quantile threshold, `s`.
-        # Set the index at `j` of the index vector.
-        if s >= q[j]
+        s += wsc[i]
+        # If we reach the current quantile threshold, `qs[j]`,
+        # set the index at `j` of the index vector (and of any further quantiles also reached).
+        if s >= qs[j]
             qxsi[j] = i
             while true
                 j += 1
                 if j == m+1
                     @goto done
                 end
-                if q[j] > s
+                if qs[j] > s
                     break
                 end
                 qxsi[j] = i
             end
         end
-        # Finished with all quantiles that hit the quantile threshold, `s`.
-        # Now update the threshold.
-        s += wsc[i]
     end
     @label done
 
     # Return the quantile values (in quantile sorted order).
-    @inbounds return(xs[qxsi])
+    return(xs[qxsi])
 end
 
 
@@ -183,6 +202,7 @@ Finds the `q` weighted quantile values from the columns of the matrix `X`.
 The `(l,m)` matrix of weighted quantile values from `X`.
 Letting `qs` be the sorted quantiles of `q`.
 The entry `(i,j)` is the ``i^{\\rm th}`` quantile (in `qs`) from the ``j^{\\rm th}`` column of `X`.
+See `wquantile` for the definition of the weighted quantile.
 
 """
 function Wquantile(X::AbstractMatrix{T} , 
@@ -190,27 +210,33 @@ function Wquantile(X::AbstractMatrix{T} ,
                    q::AbstractVector{V} ;
                    chk::Bool = true     , 
                    norm_wgt::Bool = true, 
-                   sort_q::Bool = true   ) :: AbstractMatrix{T} where {T, S <: Real, V <: Real}
+                   sort_q::Bool = true   ) where {T, S <: Real, V <: Real}
 
-    _, m = size(X)
+    n, m = size(X)
 
-    # Normalize the weights if needed.
-    if norm_wgt
-        w = convert(AbstractVector{promote_type(eltype(w[1]), eltype(q[1]))}, w)
-        w ./= sum(w)
+    # Check the parts of the input contract that are shared by all columns, once.
+    if chk
+        !isSortable(T)  && throw(NotSortable(string(T)))
+        n != length(w)  && throw(DimensionMismatch("The columns of `X` and `w` do not have the same length: $n != $(length(w))."))
     end
+
+    # Normalize the weights if needed -- into a new array; `w` is never modified.
+    # (Fresh names, `wn`/`qs`, are captured below so the closure is type stable.)
+    W  = _weight_type(S, V)
+    wn = norm_wgt ? W.(w) ./ sum(w) : W.(w)
 
     # Sort the quantiles if needed.
-    if sort_q
-        q = sort(q)
-    end
+    qs = sort_q ? sort(q) : q
+
+    # Nothing to do for a matrix with no columns.
+    m == 0 && return(Matrix{T}(undef, length(qs), 0))
 
     #= Create a closure that will be threaded -- computing the weighted quantiles of the columns of `X`.
-       If `chk` is true, only do the input check for the first column
+       If `chk` is true, only do the (remaining) input check for the first column
        as checking the rest of the columns is redundant.
 	=#
-    wquant_vec_func = p -> wquantile(p[1], w, q, 
-                                     chk=p[2]==1 ? chk : false, 
+    wquant_vec_func = p -> wquantile(p[1], wn, qs, 
+                                     chk=(p[2] == 1 ? chk : false), 
                                      norm_wgt=false, sort_q=false)
 
     #= Computation: (from right to left)
@@ -218,8 +244,7 @@ function Wquantile(X::AbstractMatrix{T} ,
        - Use Folds.map to apply multiple threads to compute the weighted quantiles on each column of `X`.
        - Place them back as an array using reduce hcat.
     =#
-    return(reduce(hcat, Folds.map(wquant_vec_func, 
-                                  zip([X[:, i] for i in 1:m], 1:m))))
+    return(reduce(hcat, Folds.map(wquant_vec_func, collect(zip(eachcol(X), 1:m)))))
 
 end
 
@@ -252,12 +277,13 @@ Finds the `q` weighted quantile values from the columns of the matrix `X`.
 The `(l,m)` matrix of weighted quantile values from `X`.
 Letting `qs` be the sorted quantiles of `q`.
 The entry `(i,j)` is the ``i^{\\rm th}`` quantile (in `qs`) from the ``j^{\\rm th}`` column of `X`.
+See `wquantile` for the definition of the weighted quantile.
 
 """
 function wquantile(X::AbstractMatrix{T}, 
                    W::AbstractMatrix{S}, 
                    q::AbstractVector{V}; 
-                   chk::Bool = true     ) :: AbstractMatrix{T} where {T, S <: Real, V <: Real}
+                   chk::Bool = true     ) where {T, S <: Real, V <: Real}
     #= ----------------------------------------------------------------
        --- Destructure inputs and potentially check input contract. ---
        ----------------------------------------------------------------
@@ -270,23 +296,25 @@ function wquantile(X::AbstractMatrix{T},
     nw, mw = size(W)
 
     # Get 0 and 1 for `q` types.
-    zeroq = zero(eltype(qs[1]))
-    oneq  = one(eltype(qs[1]))
+    zeroq = zero(V)
+    oneq  = one(V)
 
     # Check input contract...
     if chk
         !isSortable(T)     && throw(NotSortable(string(T)))
-        (n, m) != (nw, mw) && throw(DomainError(0, "`X` and `W` do not have the same length."))
+        (n, m) != (nw, mw) && throw(DimensionMismatch("`X` and `W` do not have the same size: $((n, m)) != $((nw, mw))."))
     end
 
-    # Convert weights.
-    WC = convert(AbstractMatrix{promote_type(eltype(W[1,1]), eltype(q[1]))}, W)
+    # Convert weights (to a type closed under division).
+    WT = _weight_type(S, V)
+    WC = WT.(W)
+    zerow = zero(WT)
 
     # Check input contract...
     if chk
-        !all(WC                   .>= zeroq         )  && throw(DomainError(0, "`W`: Some weights are negative."))
-        !all(sum(WC, dims=1)[1,:] .>  fill(zeroq, m))  && throw(DomainError(0, "`W`: At least one weight column does NOT have a positive sum."))
-        !all(zeroq .<= q          .<= oneq          )  && throw(DomainError(0, "`q`: Some quantiles are NOT in the interval, [0,1].")) 
+        !all(>=(zerow), WC)                            && throw(DomainError(0, "`W`: Some weights are negative."))
+        !all(>(zerow), sum(WC, dims=1))                && throw(DomainError(0, "`W`: At least one weight column does NOT have a positive sum."))
+        !all(v -> zeroq <= v <= oneq, qs)              && throw(DomainError(0, "`q`: Some quantiles are NOT in the interval, [0,1].")) 
     end
 
     #= ----------------------------------------------------------------
@@ -298,16 +326,14 @@ function wquantile(X::AbstractMatrix{T},
     # a matrix of permutations of `wc` that align with this sorting.
     Idx = sortperm(X; dims=1)
 
-    # Convert the linear indices to row indices, then add back column offsets
-    # to get correct linear indices into `WC` for each column.
-    row_indices = (Idx .- 1) .% n .+ 1
-    @inbounds Wsc = WC[row_indices .+ (0:m-1)' .* n]
+    # `Idx` holds linear indices into `X` (and therefore into `WC`, which has the same shape).
+    Wsc = WC[Idx]
 
     # Normalize sorted weights by column.
     Wsc ./= sum(Wsc, dims=1)
 
     # Apply permutation to `X` -- sorting each column of `X`.
-    @inbounds Xs = X[Idx]
+    Xs = X[Idx]
 
     #= Create an index matrix to get the list of quantiles of `X`.
        Default the indices to the index of the largest element of X for each column.
@@ -327,19 +353,18 @@ function wquantile(X::AbstractMatrix{T},
     # find the index for each associated value in `Xs`, placing them in `Qxsi`.
 
     # For each column...
+    l == 0 && return(Xs[Qxsi])
     for k in 1:m
         j = 1
-        s = zeroq
+        s = zerow   # Cumulative weight up to and including row `i` of column `k`.
 
         # For each row...
         for i in 1:n
-            # If we exceed the current quantile threshold, `s`.
-            # Set the index at (`j`,`k`) of the index matrix.
+            @inbounds s += Wsc[i, k]
+            # If we reach the current quantile threshold, `qs[j]`,
+            # set the index at (`j`,`k`) of the index matrix (and of any further quantiles also reached).
             if s >= qs[j]
                 @inbounds Qxsi[j,k] = i + (k-1) * n
-                if j == l
-                    break
-                end
                 while true
                     j += 1
                     if j == l+1
@@ -351,10 +376,6 @@ function wquantile(X::AbstractMatrix{T},
                     @inbounds Qxsi[j,k] = i + (k-1) * n
                 end
             end
-
-            # Finished with all quantiles that hit the quantile threshold, `s`.
-            # Now update the threshold.
-            @inbounds s += Wsc[i, k]
         end
 
         # We've finished off a column, onto the next.
@@ -362,7 +383,7 @@ function wquantile(X::AbstractMatrix{T},
     end
 
     # Return the quantile values as an (`l`,`m`) matrix in quantile sorted order.
-    @inbounds return(Xs[Qxsi])
+    return(Xs[Qxsi])
 end
 
 
