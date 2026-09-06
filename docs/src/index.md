@@ -23,7 +23,7 @@ Wquantile(::AbstractMatrix{T}, ::AbstractVector{S}, ::AbstractVector{V}; ::Bool 
 ```
 
 ```@docs
-wquantile(::AbstractMatrix{T}, ::AbstractMatrix{S}, ::AbstractVector{V}; ::Bool = true, ::Bool = true, ::Bool = true) where {T, S <: Real, V <: Real}
+wquantile(::AbstractMatrix{T}, ::AbstractMatrix{S}, ::AbstractVector{V}; ::Bool = true) where {T, S <: Real, V <: Real}
 ```
 
 
