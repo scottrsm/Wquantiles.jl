@@ -1,6 +1,13 @@
 # Wquantiles.jl
+
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://scottrsm.github.io/Wquantiles.jl/dev/)
+
 A few versions of weighted quantiles with examples and comparisons 
 using data parallelization. See `src/WquantileTest.ipynb` for details.
+
+## Documentation
+- HTML (latest, built from `main`): https://scottrsm.github.io/Wquantiles.jl/dev/
+- Markdown source: [docs/src/index.md](docs/src/index.md)
 
 ## Quick Start
 ```julia
@@ -19,4 +26,4 @@ wquantile(X, W, q)                  # Per-column weights given as a matrix `W`.
 
 Exported: `wquantile`, `Wquantile`. Keyword arguments `chk`, `norm_wgt`, and `sort_q`
 control input checking, weight normalization, and quantile sorting.
-See the Documenter site (or `docs/src/index.md`) for details.
+See the Documentation section for details.
